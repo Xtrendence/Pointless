@@ -6,7 +6,7 @@ export function Logo({ small = false }: { small?: boolean }) {
     <Link to="/" className="inline-flex items-center gap-2.5 font-semibold tracking-tight" aria-label="Pointless home">
       <span
         aria-hidden="true"
-        className={`${small ? "w-7 h-7 text-sm" : "w-9 h-9 text-base"} rounded-[10px] bg-orange flex items-center justify-center font-bold`}
+        className={`${small ? "w-7 h-7 text-sm" : "w-9 h-9 text-base"} rounded-[10px] bg-orange flex items-center justify-center font-bold animate-logo-pulse`}
       >
         P
       </span>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "preact/hooks";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "preact/hooks";
 import type { ComponentChildren } from "preact";
 import { useRoom } from "../hooks/useRoom";
 import { useConfetti } from "../hooks/useConfetti";
@@ -8,12 +8,73 @@ import { getSavedName } from "../lib/profile";
 import { Link } from "../router";
 import { Footer, FooterLinks, Logo, Backdrop } from "../components/Layout";
 import { NameEditor } from "../components/NameEditor";
+import { GlowBorder } from "../components/GlowBorder";
 
 // What the non-numeric cards mean, shown as a tooltip
 const VOTE_MEANINGS: Partial<Record<Vote, string>> = {
   "?": "Not sure",
   "☕": "I need a break",
 };
+
+const FLY_DURATION = 380;
+
+/**
+ * Animates a throwaway card from one element to another (deck slot <-> your
+ * seat in the team list). Resolves when it lands; skipped for reduced motion.
+ */
+function flyCard(value: Vote, from: Element, to: Element, onDone: () => void) {
+  const a = from.getBoundingClientRect();
+  const b = to.getBoundingClientRect();
+  const onScreen = (r: DOMRect) => r.bottom > 0 && r.top < innerHeight && r.width > 0;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches || !onScreen(a) || !onScreen(b)) {
+    onDone();
+    return;
+  }
+  const el = document.createElement("div");
+  el.setAttribute("aria-hidden", "true");
+  el.textContent = String(value);
+  Object.assign(el.style, {
+    position: "fixed",
+    left: `${a.left}px`,
+    top: `${a.top}px`,
+    width: `${a.width}px`,
+    height: `${a.height}px`,
+    zIndex: "60",
+    pointerEvents: "none",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "var(--color-orange)",
+    color: "#fff",
+    borderRadius: `${Math.min(12, a.width / 4)}px`,
+    fontWeight: "700",
+    fontSize: `${Math.round(a.height * 0.3)}px`,
+    boxShadow: "0 10px 24px rgba(255, 67, 6, 0.35)",
+    transformOrigin: "top left",
+  });
+  document.body.appendChild(el);
+  const dx = b.left - a.left;
+  const dy = b.top - a.top;
+  const sx = b.width / a.width;
+  const sy = b.height / a.height;
+  const animation = el.animate(
+    [
+      { transform: "translate(0, 0) rotate(0deg) scale(1, 1)" },
+      {
+        transform: `translate(${dx / 2}px, ${dy / 2 - 40}px) rotate(-6deg) scale(${(1 + sx) / 2}, ${(1 + sy) / 2})`,
+        offset: 0.5,
+      },
+      { transform: `translate(${dx}px, ${dy}px) rotate(0deg) scale(${sx}, ${sy})` },
+    ],
+    { duration: FLY_DURATION, easing: "cubic-bezier(0.4, 0, 0.2, 1)" },
+  );
+  const finish = () => {
+    el.remove();
+    onDone();
+  };
+  animation.onfinish = finish;
+  animation.oncancel = finish;
+}
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/);
@@ -27,13 +88,18 @@ function MemberRow({
   isCurrentUser,
   isRevealed,
   onRemove,
+  cardInFlight = false,
 }: {
   member: Member;
   isCurrentUser: boolean;
   isRevealed: boolean;
   onRemove: (id: string) => void;
+  /** Your own card is still flying in from the deck: keep showing the placeholder */
+  cardInFlight?: boolean;
 }) {
   const hasVoted = member.vote !== null;
+  // You always see your own card; everyone else's stays face-down until the reveal
+  const faceUp = isRevealed || isCurrentUser;
 
   const voteStatus = hasVoted
     ? isRevealed
@@ -68,7 +134,18 @@ function MemberRow({
         <div className="text-sm font-medium truncate">{member.name}</div>
         <div className="text-xs text-grey">
           {isCurrentUser && <span className="text-orange">you · </span>}
-          {hasVoted ? (isRevealed ? "voted" : "ready") : "thinking…"}
+          {hasVoted ? (
+            isRevealed ? "voted" : "ready"
+          ) : (
+            <>
+              thinking
+              {[0, 1, 2].map((i) => (
+                <span key={i} className="animate-thinking-dot" style={{ animationDelay: `${i * 0.2}s` }}>
+                  .
+                </span>
+              ))}
+            </>
+          )}
         </div>
       </div>
 
@@ -96,21 +173,20 @@ function MemberRow({
         </button>
       )}
 
-      {/* Vote chip: face-down until revealed */}
-      <div
-        aria-hidden="true"
-        className={`
-        w-9 h-12 shrink-0 rounded-lg flex items-center justify-center font-bold text-base
-        ${
-          hasVoted
-            ? isRevealed
-              ? "bg-orange text-white animate-bounce-once"
-              : "bg-off-white text-ink"
-            : "border-2 border-dashed border-line text-transparent"
-        }
-      `}
-      >
-        {hasVoted ? (isRevealed ? member.vote : "✓") : ""}
+      {/* Vote chip: a dashed placeholder until voted, face-down until revealed */}
+      <div className="shrink-0" data-my-seat={isCurrentUser ? "" : undefined}>
+        {hasVoted && !cardInFlight ? (
+          <div
+            aria-hidden="true"
+            className={`w-9 h-12 rounded-lg flex items-center justify-center font-bold text-base ${faceUp ? "bg-orange text-white" : "bg-off-white text-ink"} ${isRevealed ? "animate-bounce-once" : ""}`}
+          >
+            {faceUp ? member.vote : "✓"}
+          </div>
+        ) : (
+          <GlowBorder radius={8} duration={6} intensity={0.55}>
+            <div aria-hidden="true" className="w-9 h-12 rounded-lg border-2 border-dashed border-line" />
+          </GlowBorder>
+        )}
       </div>
     </div>
   );
@@ -190,6 +266,42 @@ export default function Room({ code }: { code: string }) {
   useEffect(() => {
     if (myVote !== undefined) setSelectedValue(myVote);
   }, [myVote]);
+
+  // Cards travelling between your hand and your seat: `in` is heading to the
+  // seat, `out` is returning to its slot in the hand
+  const [flight, setFlight] = useState<{ in?: Vote; out?: Vote }>({});
+  const previousVote = useRef<Vote | null | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (myVote === undefined) return; // not in the room yet
+    const previous = previousVote.current;
+    previousVote.current = myVote;
+    // Nothing to animate on first load, or if the vote didn't change
+    if (previous === undefined || previous === myVote) return;
+
+    const seat = document.querySelector("[data-my-seat]");
+    const slot = (v: Vote) => getVotingButton(VOTE_VALUES.indexOf(v as never));
+    const next: { in?: Vote; out?: Vote } = {};
+
+    if (previous !== null) {
+      const target = slot(previous);
+      if (seat && target) {
+        next.out = previous;
+        flyCard(previous, seat, target, () =>
+          setFlight((f) => (f.out === previous ? { ...f, out: undefined } : f)),
+        );
+      }
+    }
+    if (myVote !== null) {
+      const source = slot(myVote);
+      if (seat && source) {
+        next.in = myVote;
+        flyCard(myVote, source, seat, () =>
+          setFlight((f) => (f.in === myVote ? { ...f, in: undefined } : f)),
+        );
+      }
+    }
+    setFlight(next);
+  }, [myVote, getVotingButton]);
 
   // Check for consensus and fire confetti
   useEffect(() => {
@@ -510,6 +622,7 @@ export default function Room({ code }: { code: string }) {
                       isCurrentUser={member.id === currentMember.id}
                       isRevealed={showResults}
                       onRemove={removeMember}
+                      cardInFlight={member.id === currentMember.id && flight.in !== undefined}
                     />
                   </div>
                 ))}
@@ -668,6 +781,8 @@ export default function Room({ code }: { code: string }) {
             {VOTE_VALUES.map((value, index) => {
               const isSelected = selectedValue === value;
               const shouldHaveTabIndex = isSelected || (selectedValue === null && index === 0);
+              // Your card has left the hand (placed at your seat, or still flying back)
+              const isGap = (isSelected && flight.out !== value) || (flight.out === value && flight.in !== value);
               const meaning = VOTE_MEANINGS[value];
 
               return (
@@ -705,8 +820,8 @@ export default function Room({ code }: { code: string }) {
                       border-2
                       focus:outline-none focus-visible:ring-4 focus-visible:ring-orange/50 focus-visible:ring-offset-2 focus-visible:ring-offset-ink
                       ${
-                        isSelected
-                          ? "bg-orange text-white -translate-y-3 shadow-xl shadow-orange/30 border-orange"
+                        isGap
+                          ? "bg-transparent text-white/25 border-dashed border-orange/50 hover:border-orange"
                           : "bg-ink-2 text-white hover:bg-ink-3 border-line hover:border-off-white"
                       }
                       ${showResults ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:-translate-y-2"}

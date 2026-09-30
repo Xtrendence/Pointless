@@ -134,8 +134,99 @@ kbd {
   animation: bounce-once 0.45s ease-out;
 }
 
+/* Home page hand of cards: a slow, endless float. Uses the individual
+   translate/rotate properties so it layers on top of each card's fan transform. */
+@keyframes card-float {
+  0%,
+  100% {
+    translate: 0 0;
+    rotate: 0deg;
+  }
+  50% {
+    translate: 0 -7px;
+    rotate: 1.2deg;
+  }
+}
+.animate-card-float {
+  animation: card-float 4.5s ease-in-out infinite;
+}
+
+/* Gentle side-to-side nudge for call-to-action arrows */
+@keyframes arrow-nudge {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 4px 0;
+  }
+}
+.animate-arrow-nudge {
+  display: inline-block;
+  animation: arrow-nudge 1.8s ease-in-out infinite;
+}
+
+/* Slow breathing glow around the logo mark */
+@keyframes logo-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-orange) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 18px 3px color-mix(in srgb, var(--color-orange) 45%, transparent);
+  }
+}
+.animate-logo-pulse {
+  animation: logo-pulse 3.2s ease-in-out infinite;
+}
+
+/* "thinking..." dots that brighten one after another */
+@keyframes thinking-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+.animate-thinking-dot {
+  animation: thinking-dot 1.4s ease-in-out infinite;
+}
+
+/* A soft highlight that travels clockwise around a GlowBorder, starting and
+   ending at the top-left corner. The path is normalised to pathLength=100 and the
+   streak is 14 long, so starting the offset at +14 puts it just behind the corner. */
+@keyframes glow-travel {
+  from {
+    stroke-dashoffset: 14;
+  }
+  to {
+    stroke-dashoffset: -86;
+  }
+}
+.glow-border-path {
+  stroke-dasharray: 14 86;
+  animation: glow-travel 7s linear infinite;
+}
+.glow-border {
+  transition: opacity 0.3s;
+}
+/* The field turns orange on focus, so step aside while typing */
+:focus-within > .glow-border {
+  opacity: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-bounce-once {
+  .animate-bounce-once,
+  .animate-card-float,
+  .animate-arrow-nudge,
+  .animate-logo-pulse,
+  .animate-thinking-dot {
     animation: none;
+  }
+  .glow-border {
+    display: none;
   }
 }

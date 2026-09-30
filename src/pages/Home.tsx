@@ -4,6 +4,8 @@ import { createRoom, isValidRoomCode, NAME_MAX_LENGTH, listRecentRooms, type Rec
 import { getSavedName, setSavedName } from "../lib/profile";
 import { NameEditor } from "../components/NameEditor";
 import { Footer, Logo, Backdrop } from "../components/Layout";
+import { ShufflingHand } from "../components/ShufflingHand";
+import { GlowBorder } from "../components/GlowBorder";
 
 function timeAgo(ts: number) {
   const minutes = Math.round((Date.now() - ts) / 60000);
@@ -90,17 +92,7 @@ export default function Home() {
             </p>
 
             {/* Decorative hand of cards */}
-            <div aria-hidden="true" className="hidden sm:flex mt-12 h-36 items-end">
-              {[3, 5, 8, 13, "?"].map((value, i) => (
-                <div
-                  key={value}
-                  className={`-ml-4 first:ml-0 w-20 h-28 rounded-2xl border-2 flex items-center justify-center font-bold text-2xl shadow-xl ${i === 2 ? "bg-orange border-orange shadow-orange/30" : "bg-ink-2 border-line"}`}
-                  style={{ transform: `rotate(${(i - 2) * 6}deg) translateY(${i === 2 ? -24 : Math.abs(i - 2) * 6}px)` }}
-                >
-                  {value}
-                </div>
-              ))}
-            </div>
+            <ShufflingHand />
           </div>
 
           {/* Start panel */}
@@ -137,7 +129,9 @@ export default function Home() {
               className="btn text-lg w-full"
             >
               {isCreating ? "Creating..." : "Create a Room"}
-              <span aria-hidden="true">→</span>
+              <span aria-hidden="true" className="animate-arrow-nudge">
+                →
+              </span>
             </button>
 
             <div className="flex items-center gap-3 my-5 text-xs uppercase tracking-wide text-grey">
@@ -150,15 +144,17 @@ export default function Home() {
               <label htmlFor="room-code" className="sr-only">
                 Room code
               </label>
-              <input
-                id="room-code"
-                value={joinCode}
-                onInput={(e) => setJoinCode((e.target as HTMLInputElement).value.toUpperCase())}
-                placeholder="Room code"
-                maxLength={6}
-                autoComplete="off"
-                className="field font-mono uppercase tracking-widest"
-              />
+              <GlowBorder className="flex-1 min-w-0">
+                <input
+                  id="room-code"
+                  value={joinCode}
+                  onInput={(e) => setJoinCode((e.target as HTMLInputElement).value.toUpperCase())}
+                  placeholder="Room code"
+                  maxLength={6}
+                  autoComplete="off"
+                  className="field font-mono uppercase tracking-widest"
+                />
+              </GlowBorder>
               <button type="submit" className="btn btn-outline shrink-0" disabled={!joinCode.trim() || !hasName}>
                 Join
               </button>
