@@ -274,7 +274,9 @@ export default function Room({ code }: { code: string }) {
   };
 
   const handleVote = (value: Vote) => {
-    const newValue = selectedValue === value ? null : value;
+    // Toggle against the room's current vote, not a possibly stale local selection
+    const current = myVote === undefined ? selectedValue : myVote;
+    const newValue = current === value ? null : value;
     setSelectedValue(newValue);
     vote(newValue);
     setAnnouncement(newValue === null ? "Vote removed" : `Voted ${newValue}`);

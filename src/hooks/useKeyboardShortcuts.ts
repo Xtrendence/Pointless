@@ -1,4 +1,4 @@
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 
 interface KeyboardShortcutsOptions {
   onVote: (value: number | string) => void;
@@ -8,17 +8,22 @@ interface KeyboardShortcutsOptions {
   showResults: boolean;
 }
 
-export function useKeyboardShortcuts({
-  onVote,
-  onReveal,
-  onReset,
-  canReveal,
-  showResults,
-}: KeyboardShortcutsOptions) {
+export function useKeyboardShortcuts(options: KeyboardShortcutsOptions) {
+  // Read the latest options at key press time, so a key pressed right after a
+  // re-render never acts on the previous state
+  const latest = useRef(options);
+  latest.current = options;
+
   useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
+      const { onVote, onReveal, onReset, canReveal, showResults } = latest.current;
       // Ignore if user is typing in an input field
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // Leave browser shortcuts alone (Cmd/Ctrl+R to refresh, Cmd+1-9 to switch tabs, ...)
+      if (event.metaKey || event.ctrlKey || event.altKey) {
         return;
       }
 
@@ -51,5 +56,5 @@ export function useKeyboardShortcuts({
 
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
-  }, [onVote, onReveal, onReset, canReveal, showResults]);
+  }, []);
 }
