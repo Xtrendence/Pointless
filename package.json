@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Serverless ticket estimation for agile teams, hosted on GitHub Pages",
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && cp dist/index.html dist/404.html",
