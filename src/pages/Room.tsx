@@ -9,6 +9,12 @@ import { Link } from "../router";
 import { Footer, Logo, Backdrop } from "../components/Layout";
 import { NameEditor } from "../components/NameEditor";
 
+// What the non-numeric cards mean, shown as a tooltip
+const VOTE_MEANINGS: Partial<Record<Vote, string>> = {
+  "?": "Not sure",
+  "☕": "I need a break",
+};
+
 // Member card component with remove button
 function MemberCard({
   member,
@@ -85,7 +91,13 @@ function MemberCard({
 
       {/* Name */}
       <div className="text-sm text-off-white truncate font-medium">{member.name}</div>
-      {isCurrentUser && <div className="text-xs text-orange mt-0.5">you</div>}
+      {/* Always rendered so every card is the same height */}
+      <div
+        aria-hidden={!isCurrentUser}
+        className={`text-xs mt-0.5 ${isCurrentUser ? "text-orange" : "invisible"}`}
+      >
+        you
+      </div>
 
       {/* Vote indicator */}
       <div
@@ -493,13 +505,14 @@ export default function Room({ code }: { code: string }) {
                 {VOTE_VALUES.map((value, index) => {
                   const isSelected = selectedValue === value;
                   const shouldHaveTabIndex = isSelected || (selectedValue === null && index === 0);
+                  const meaning = VOTE_MEANINGS[value];
 
                   return (
-                    <li key={value} role="none" className="list-none">
+                    <li key={value} role="none" className="list-none relative group">
                       <button
                         role="radio"
                         aria-checked={isSelected}
-                        aria-label={`Vote ${value}`}
+                        aria-label={meaning ? `Vote ${value} (${meaning})` : `Vote ${value}`}
                         onClick={() => handleVote(value)}
                         disabled={showResults}
                         tabIndex={shouldHaveTabIndex ? 0 : -1}
@@ -539,6 +552,14 @@ export default function Room({ code }: { code: string }) {
                       >
                         {value}
                       </button>
+                      {meaning && (
+                        <span
+                          aria-hidden="true"
+                          className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-3 z-20 whitespace-nowrap rounded-[10px] bg-off-white text-ink text-xs font-semibold px-3 py-1.5 shadow-lg opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 group-has-[:focus-visible]:opacity-100 group-has-[:focus-visible]:translate-y-0 after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[6px] after:border-transparent after:border-t-off-white"
+                        >
+                          {meaning}
+                        </span>
+                      )}
                     </li>
                   );
                 })}
