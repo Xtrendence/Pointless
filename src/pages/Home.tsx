@@ -74,22 +74,43 @@ export default function Home() {
       </header>
 
       <div className="relative z-10 flex-1 flex items-center">
-        <div className="container mx-auto px-4 py-16">
-          <div className="max-w-3xl">
+        <div className="container mx-auto px-4 py-12 lg:py-20 grid gap-12 lg:grid-cols-[1fr_440px] items-center">
+          {/* Pitch */}
+          <div>
             <p className="text-orange font-semibold tracking-wide uppercase text-sm mb-4">
               Ticket estimation
             </p>
             <h1 className="text-4xl sm:text-5xl lg:text-[65px] font-medium leading-[1.15] mb-6">
               Estimate tickets together, <span className="text-orange">in real time.</span>
             </h1>
-            <p className="text-lg sm:text-[21px] leading-relaxed text-off-white/80 mb-10 max-w-xl">
+            <p className="text-lg sm:text-[21px] leading-relaxed text-off-white/80 max-w-xl">
               {/* First a, r, t, i and s are in full white */}
               Coll<span className="text-white">a</span>bo<span className="text-white">r</span>a<span className="text-white">t</span><span className="text-white">i</span>ve e<span className="text-white">s</span>timation with the Fibonacci sequence.
               Create a room and invite your team.
             </p>
 
+            {/* Decorative hand of cards */}
+            <div aria-hidden="true" className="hidden sm:flex mt-12 h-36 items-end">
+              {[3, 5, 8, 13, "?"].map((value, i) => (
+                <div
+                  key={value}
+                  className={`-ml-4 first:ml-0 w-20 h-28 rounded-2xl border-2 flex items-center justify-center font-bold text-2xl shadow-xl ${i === 2 ? "bg-orange border-orange shadow-orange/30" : "bg-ink-2 border-line"}`}
+                  style={{ transform: `rotate(${(i - 2) * 6}deg) translateY(${i === 2 ? -24 : Math.abs(i - 2) * 6}px)` }}
+                >
+                  {value}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Start panel */}
+          <div className="card p-6 sm:p-8 shadow-2xl shadow-black/40">
+            <h2 className="text-xl font-semibold mb-6">
+              {name ? `Welcome back, ${name}` : "Get started"}
+            </h2>
+
             {needsName && (
-              <div className="mb-6 max-w-sm">
+              <div className="mb-5">
                 <label htmlFor="home-name" className="block text-sm text-grey mb-2">
                   First, what's your name?{" "}
                   <span className="text-grey/70">(remembered for every room)</span>
@@ -110,74 +131,79 @@ export default function Home() {
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row gap-4 sm:items-center">
-              <button
-                onClick={handleCreateRoom}
-                disabled={isCreating || !hasName}
-                className="btn text-lg"
-              >
-                {isCreating ? "Creating..." : "Create a Room"}
-                <span aria-hidden="true">→</span>
-              </button>
-              <form onSubmit={handleJoin} className="flex gap-2">
-                <label htmlFor="room-code" className="sr-only">
-                  Room code
-                </label>
-                <input
-                  id="room-code"
-                  value={joinCode}
-                  onInput={(e) => setJoinCode((e.target as HTMLInputElement).value.toUpperCase())}
-                  placeholder="Room code"
-                  maxLength={6}
-                  autoComplete="off"
-                  className="field font-mono uppercase tracking-widest w-40!"
-                />
-                <button type="submit" className="btn btn-outline" disabled={!joinCode.trim() || !hasName}>
-                  Join
-                </button>
-              </form>
+            <button
+              onClick={handleCreateRoom}
+              disabled={isCreating || !hasName}
+              className="btn text-lg w-full"
+            >
+              {isCreating ? "Creating..." : "Create a Room"}
+              <span aria-hidden="true">→</span>
+            </button>
+
+            <div className="flex items-center gap-3 my-5 text-xs uppercase tracking-wide text-grey">
+              <span className="flex-1 h-px bg-line" />
+              or join one
+              <span className="flex-1 h-px bg-line" />
             </div>
 
-            {error && <p className="mt-4 text-orange">{error}</p>}
-          </div>
+            <form onSubmit={handleJoin} className="flex gap-2">
+              <label htmlFor="room-code" className="sr-only">
+                Room code
+              </label>
+              <input
+                id="room-code"
+                value={joinCode}
+                onInput={(e) => setJoinCode((e.target as HTMLInputElement).value.toUpperCase())}
+                placeholder="Room code"
+                maxLength={6}
+                autoComplete="off"
+                className="field font-mono uppercase tracking-widest"
+              />
+              <button type="submit" className="btn btn-outline shrink-0" disabled={!joinCode.trim() || !hasName}>
+                Join
+              </button>
+            </form>
 
-          {recent.length > 0 && (
-            <section className="mt-16 max-w-3xl" aria-labelledby="recent-heading">
-              <h2 id="recent-heading" className="text-lg font-semibold mb-4">
-                Your recent rooms
-              </h2>
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {recent.map((room) => (
-                  <li key={room.code}>
-                    <Link
-                      to={`/room/${room.code}`}
-                      className="card group flex items-center justify-between p-4 hover:border-orange transition-colors"
-                    >
-                      <div>
-                        <div className="font-mono font-bold tracking-widest text-lg">
-                          {room.code}
-                        </div>
-                        <div className="text-xs text-grey mt-1">
-                          {room.memberCount} member{room.memberCount === 1 ? "" : "s"} · active{" "}
-                          {timeAgo(room.lastActivity)}
-                          {room.myName ? ` · as ${room.myName}` : ""}
-                        </div>
-                      </div>
-                      <span
-                        aria-hidden="true"
-                        className="text-orange text-xl transition-transform group-hover:translate-x-1"
+            {error && (
+              <p role="alert" className="mt-4 text-sm text-orange">
+                {error}
+              </p>
+            )}
+
+            {recent.length > 0 && (
+              <section className="mt-8 pt-6 border-t border-line" aria-labelledby="recent-heading">
+                <h3 id="recent-heading" className="text-xs uppercase tracking-wide text-grey mb-3">
+                  Your recent rooms
+                </h3>
+                <ul className="flex flex-col gap-1 -mx-3">
+                  {recent.slice(0, 5).map((room) => (
+                    <li key={room.code}>
+                      <Link
+                        to={`/room/${room.code}`}
+                        className="group flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-ink-3 transition-colors"
                       >
-                        →
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+                        <div>
+                          <div className="font-mono font-bold tracking-widest">{room.code}</div>
+                          <div className="text-xs text-grey mt-0.5">
+                            {room.memberCount} member{room.memberCount === 1 ? "" : "s"} · active{" "}
+                            {timeAgo(room.lastActivity)}
+                            {room.myName ? ` · as ${room.myName}` : ""}
+                          </div>
+                        </div>
+                        <span
+                          aria-hidden="true"
+                          className="text-orange text-lg transition-transform group-hover:translate-x-1"
+                        >
+                          →
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
-          <div className="mt-16 text-sm text-grey">
-            <p>Rooms expire after 24 hours of inactivity</p>
+            <p className="mt-6 text-xs text-grey">Rooms expire after 24 hours of inactivity</p>
           </div>
         </div>
       </div>

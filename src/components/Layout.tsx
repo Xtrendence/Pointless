@@ -43,18 +43,25 @@ export function Footer() {
     <footer className="relative z-10 mt-auto border-t border-line">
       <div className="container mx-auto px-4 py-6 flex flex-wrap gap-2 items-center justify-between text-xs text-grey">
         <span>Pointless · ticket estimation</span>
-        <div className="flex items-center gap-4">
-          <ClearDataButton />
-          <a
-            href="https://github.com/Xtrendence/Pointless"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-orange transition-colors"
-          >
-            GitHub
-          </a>
-        </div>
+        <FooterLinks />
       </div>
     </footer>
+  );
+}
+
+/** Secondary links, shown in the footer or, in a room, under the team list. */
+export function FooterLinks() {
+  return (
+    <div className="flex items-center gap-4">
+      <ClearDataButton />
+      <a
+        href="https://github.com/Xtrendence/Pointless"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="hover:text-orange transition-colors"
+      >
+        GitHub
+      </a>
+    </div>
   );
 }

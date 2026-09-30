@@ -6,7 +6,7 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { NAME_MAX_LENGTH, VOTE_VALUES, type Member, type Vote } from "../lib/room";
 import { getSavedName } from "../lib/profile";
 import { Link } from "../router";
-import { Footer, Logo, Backdrop } from "../components/Layout";
+import { Footer, FooterLinks, Logo, Backdrop } from "../components/Layout";
 import { NameEditor } from "../components/NameEditor";
 
 // What the non-numeric cards mean, shown as a tooltip
@@ -15,8 +15,14 @@ const VOTE_MEANINGS: Partial<Record<Vote, string>> = {
   "☕": "I need a break",
 };
 
-// Member card component with remove button
-function MemberCard({
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/);
+  const letters = parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : name.trim().slice(0, 2);
+  return letters.toUpperCase();
+}
+
+// One row in the team roster, with a remove button on hover
+function MemberRow({
   member,
   isCurrentUser,
   isRevealed,
@@ -28,7 +34,6 @@ function MemberCard({
   onRemove: (id: string) => void;
 }) {
   const hasVoted = member.vote !== null;
-  const displayValue = isRevealed ? (member.vote ?? "-") : hasVoted ? "?" : "-";
 
   const voteStatus = hasVoted
     ? isRevealed
@@ -41,17 +46,38 @@ function MemberCard({
       role="article"
       aria-label={`${member.name}${isCurrentUser ? " (you)" : ""}, ${voteStatus}${member.online ? "" : ", away"}`}
       className={`
-      group relative card p-4 text-center transition-all duration-200 hover:border-grey/60
-      ${isCurrentUser ? "border-orange! shadow-lg shadow-orange/15" : ""}
-      ${isRevealed && hasVoted ? "bg-ink-3" : ""}
+      group relative flex items-center gap-3 rounded-2xl px-3 py-2.5 border transition-colors
+      ${isCurrentUser ? "border-orange bg-orange/10 shadow-lg shadow-orange/10" : "border-transparent hover:bg-ink-3"}
     `}
     >
+      {/* Avatar with online indicator */}
+      <div aria-hidden="true" className="relative shrink-0">
+        <div
+          className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${isCurrentUser ? "bg-orange text-white" : "bg-ink-3 text-off-white"}`}
+        >
+          {initials(member.name)}
+        </div>
+        <span
+          title={member.online ? "Online" : "Away"}
+          className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-ink-2 ${member.online ? "bg-emerald-400" : "bg-line"}`}
+        />
+      </div>
+
+      {/* Name and status */}
+      <div className="min-w-0 flex-1" aria-hidden="true">
+        <div className="text-sm font-medium truncate">{member.name}</div>
+        <div className="text-xs text-grey">
+          {isCurrentUser && <span className="text-orange">you · </span>}
+          {hasVoted ? (isRevealed ? "voted" : "ready") : "thinking…"}
+        </div>
+      </div>
+
       {/* Remove button - appears on hover */}
       {!isCurrentUser && (
         <button
           onClick={() => onRemove(member.id)}
           aria-label={`Remove ${member.name} from room`}
-          className="absolute -top-2 -right-2 w-6 h-6 bg-off-white hover:bg-orange hover:text-white rounded-full text-ink text-sm flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 shadow-lg focus:outline-none focus:ring-2 focus:ring-orange"
+          className="w-7 h-7 shrink-0 rounded-full text-grey hover:text-white hover:bg-orange flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange"
           title="Remove member"
         >
           <svg
@@ -70,43 +96,22 @@ function MemberCard({
         </button>
       )}
 
-      {/* Online indicator */}
-      <span
-        aria-hidden="true"
-        title={member.online ? "Online" : "Away"}
-        className={`absolute top-3 left-3 w-2 h-2 rounded-full ${member.online ? "bg-emerald-400" : "bg-line"}`}
-      />
-
-      {/* Vote display */}
+      {/* Vote chip: face-down until revealed */}
       <div
         aria-hidden="true"
         className={`
-        text-3xl font-bold mb-2 h-10 flex items-center justify-center
-        ${hasVoted ? (isRevealed ? "text-orange" : "text-white") : "text-white/25"}
-        ${isRevealed && hasVoted ? "animate-bounce-once" : ""}
+        w-9 h-12 shrink-0 rounded-lg flex items-center justify-center font-bold text-base
+        ${
+          hasVoted
+            ? isRevealed
+              ? "bg-orange text-white animate-bounce-once"
+              : "bg-off-white text-ink"
+            : "border-2 border-dashed border-line text-transparent"
+        }
       `}
       >
-        {displayValue}
+        {hasVoted ? (isRevealed ? member.vote : "✓") : ""}
       </div>
-
-      {/* Name */}
-      <div className="text-sm text-off-white truncate font-medium">{member.name}</div>
-      {/* Always rendered so every card is the same height */}
-      <div
-        aria-hidden={!isCurrentUser}
-        className={`text-xs mt-0.5 ${isCurrentUser ? "text-orange" : "invisible"}`}
-      >
-        you
-      </div>
-
-      {/* Vote indicator */}
-      <div
-        aria-hidden="true"
-        className={`
-        mt-2 h-1 rounded-full transition-all duration-300
-        ${hasVoted ? "bg-orange" : "bg-white/10"}
-      `}
-      />
     </div>
   );
 }
@@ -419,6 +424,20 @@ export default function Room({ code }: { code: string }) {
   const average =
     numericVotes.length > 0 ? numericVotes.reduce((a, b) => a + b, 0) / numericVotes.length : 0;
 
+  const castVotes = members.map((m) => m.vote).filter((v): v is Vote => v !== null);
+  const consensus =
+    castVotes.length >= 2 && castVotes.every((v) => v === castVotes[0]) ? castVotes[0] : null;
+
+  // Group voters by value, numbers first
+  const breakdown = [...new Set(castVotes)]
+    .map((value) => ({ value, voters: members.filter((m) => m.vote === value).map((m) => m.name) }))
+    .sort((a, b) => {
+      const aNum = typeof a.value === "number" ? a.value : Infinity;
+      const bNum = typeof b.value === "number" ? b.value : Infinity;
+      return aNum - bNum;
+    });
+  const maxCount = Math.max(1, ...breakdown.map((b) => b.voters.length));
+
   return (
     <>
       {/* Skip links */}
@@ -435,21 +454,33 @@ export default function Room({ code }: { code: string }) {
         Skip to voting
       </a>
 
-      <main id="main-content" className="min-h-screen flex flex-col">
-        <div className="container mx-auto px-4 py-4 flex-1 flex flex-col">
-          {/* Live region for screen reader announcements */}
-          <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-            {announcement}
-          </div>
+      <main id="main-content" className="min-h-screen flex flex-col pb-32">
+        {/* Live region for screen reader announcements */}
+        <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+          {announcement}
+        </div>
 
-          {/* Header */}
-          <header className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-line">
+        {/* Top bar */}
+        <header className="border-b border-line">
+          <div className="container mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-3">
             <Logo small />
-            <div className="flex items-center gap-3">
-              <p className="text-sm text-grey">
-                Room:{" "}
-                <span className="font-mono font-bold text-white tracking-widest">{code}</span>
-              </p>
+            <NameEditor name={currentMember.name} onSave={rename} onSaved={setSavedNameState} />
+          </div>
+        </header>
+        {!view.connected && view.synced && (
+          <p role="alert" className="text-xs text-orange text-center mt-3">
+            Reconnecting...
+          </p>
+        )}
+
+        <div className="container mx-auto px-4 py-6 flex-1 grid gap-6 lg:grid-cols-[340px_1fr] items-start">
+          {/* Team roster */}
+          <aside aria-label="Team members" className="card p-4 order-2 lg:order-none lg:sticky lg:top-6">
+            <div className="flex items-center justify-between gap-3 px-2 pt-1 pb-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-grey">Room</p>
+                <p className="font-mono font-bold text-xl tracking-widest">{code}</p>
+              </div>
               <button
                 onClick={handleCopyUrl}
                 aria-label={copied ? "Room URL copied to clipboard" : "Copy room URL to clipboard"}
@@ -458,27 +489,21 @@ export default function Room({ code }: { code: string }) {
                 {copied ? "Copied!" : "Copy URL"}
               </button>
             </div>
-            <NameEditor name={currentMember.name} onSave={rename} onSaved={setSavedNameState} />
-          </header>
-          {view.synced && !view.connected && (
-            <p role="alert" className="text-xs text-orange text-center -mt-3 mb-3">
-              Reconnecting...
-            </p>
-          )}
-
-          {/* Main content wrapper - centered vertically */}
-          <div className="flex-1 flex flex-col justify-center">
-            {/* Team members */}
-            <section aria-label="Team members">
-              <h2 className="sr-only">Team members and their votes</h2>
+            <div className="border-t border-line pt-3">
+              <h2 className="px-2 mb-2 text-xs uppercase tracking-wide text-grey flex justify-between">
+                <span>Team</span>
+                <span>
+                  {members.length} member{members.length === 1 ? "" : "s"}
+                </span>
+              </h2>
               <div
                 role="list"
                 aria-label={`${members.length} team members, ${votedCount} have voted`}
-                className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-8"
+                className="flex flex-col gap-1"
               >
                 {members.map((member) => (
                   <div key={member.id} role="listitem">
-                    <MemberCard
+                    <MemberRow
                       member={member}
                       isCurrentUser={member.id === currentMember.id}
                       isRevealed={showResults}
@@ -487,103 +512,68 @@ export default function Room({ code }: { code: string }) {
                   </div>
                 ))}
               </div>
-            </section>
+            </div>
+            <div className="border-t border-line mt-3 pt-3 px-2 text-xs text-grey">
+              <FooterLinks />
+            </div>
+          </aside>
 
-            {/* Voting cards */}
-            <section id="voting" aria-labelledby="voting-label" className="mb-8">
-              <h3 id="voting-label" className="text-sm font-medium text-grey mb-3 text-center">
-                Your vote:
-              </h3>
-              <ul
-                ref={votingGroupRef}
-                role="radiogroup"
-                aria-labelledby="voting-label"
-                aria-required="false"
-                aria-disabled={showResults}
-                className="flex flex-wrap gap-3 justify-center list-none p-0 m-0"
-              >
-                {VOTE_VALUES.map((value, index) => {
-                  const isSelected = selectedValue === value;
-                  const shouldHaveTabIndex = isSelected || (selectedValue === null && index === 0);
-                  const meaning = VOTE_MEANINGS[value];
-
-                  return (
-                    <li key={value} role="none" className="list-none relative group">
-                      <button
-                        role="radio"
-                        aria-checked={isSelected}
-                        aria-label={meaning ? `Vote ${value} (${meaning})` : `Vote ${value}`}
-                        onClick={() => handleVote(value)}
-                        disabled={showResults}
-                        tabIndex={shouldHaveTabIndex ? 0 : -1}
-                        onKeyDown={(e) => {
-                          // Arrow navigation
-                          if (e.key === "ArrowRight" || e.key === "ArrowDown") {
-                            e.preventDefault();
-                            const nextIndex = (index + 1) % VOTE_VALUES.length;
-                            getVotingButton(nextIndex)?.focus();
-                          } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-                            e.preventDefault();
-                            const prevIndex =
-                              (index - 1 + VOTE_VALUES.length) % VOTE_VALUES.length;
-                            getVotingButton(prevIndex)?.focus();
-                          } else if (e.key === " " || e.key === "Enter") {
-                            e.preventDefault();
-                            handleVote(value);
-                          } else if (e.key === "Home") {
-                            e.preventDefault();
-                            getVotingButton(0)?.focus();
-                          } else if (e.key === "End") {
-                            e.preventDefault();
-                            getVotingButton(VOTE_VALUES.length - 1)?.focus();
-                          }
-                        }}
-                        className={`
-                      w-16 h-24 sm:w-20 sm:h-28 rounded-2xl font-bold text-2xl sm:text-3xl transition-all
-                      border-2
-                      focus:outline-none focus-visible:ring-4 focus-visible:ring-orange/50 focus-visible:ring-offset-2 focus-visible:ring-offset-ink
-                      ${
-                        isSelected
-                          ? "bg-orange text-white -translate-y-1.5 shadow-xl shadow-orange/30 border-orange"
-                          : "bg-ink-2 text-white hover:bg-ink-3 border-line hover:border-off-white"
-                      }
-                      ${showResults ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:-translate-y-1"}
-                    `}
-                      >
-                        {value}
-                      </button>
-                      {meaning && (
-                        <span
-                          aria-hidden="true"
-                          className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-3 z-20 whitespace-nowrap rounded-[10px] bg-off-white text-ink text-xs font-semibold px-3 py-1.5 shadow-lg opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 group-has-[:focus-visible]:opacity-100 group-has-[:focus-visible]:translate-y-0 after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[6px] after:border-transparent after:border-t-off-white"
-                        >
-                          {meaning}
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-
-            {/* Actions */}
+          {/* Round status, actions and results */}
+          <section aria-label="Current round" className="card relative overflow-hidden p-6 sm:p-10">
             <div
-              role="group"
-              aria-label="Voting actions"
-              className="flex flex-wrap justify-center gap-3 mb-6"
-            >
+              aria-hidden="true"
+              className="pointer-events-none absolute -right-24 -top-24 w-72 h-72 rounded-full border-2 border-orange/20"
+            />
+            <p className="text-orange font-semibold tracking-wide uppercase text-xs mb-3">
+              {showResults ? "Results" : revealCountdown !== null ? "Revealing" : "Round in progress"}
+            </p>
+
+            <h1 className="text-3xl sm:text-5xl font-medium leading-tight mb-3">
               {revealCountdown !== null ? (
                 <>
-                  <button disabled className="btn opacity-100! cursor-default!">
-                    <span>Revealing in</span>
-                    <span className="text-2xl font-bold tabular-nums leading-none">
-                      {revealCountdown}
-                    </span>
-                  </button>
-                  <button onClick={cancelRevealCountdown} className="btn btn-outline">
-                    Cancel
-                  </button>
+                  Revealing in{" "}
+                  <span className="text-orange tabular-nums">{revealCountdown}</span>
                 </>
+              ) : !showResults ? (
+                <>
+                  <span className="text-orange">{votedCount}</span> of {members.length} voted
+                </>
+              ) : consensus !== null ? (
+                <>
+                  Everyone agrees on <span className="text-orange">{consensus}</span>
+                </>
+              ) : numericVotes.length > 0 ? (
+                <>
+                  Average <span className="text-orange">{average.toFixed(1)}</span>
+                </>
+              ) : (
+                "Votes are in"
+              )}
+            </h1>
+            <p className="text-grey mb-6 max-w-lg">
+              {showResults
+                ? `${castVotes.length} of ${members.length} voted. Reset to start the next ticket.`
+                : "Pick a card below. Votes stay hidden until someone reveals them."}
+            </p>
+
+            {!showResults && (
+              <div
+                aria-hidden="true"
+                className="h-1.5 rounded-full bg-ink-3 overflow-hidden mb-8 max-w-lg"
+              >
+                <div
+                  className="h-full bg-orange rounded-full transition-all duration-500"
+                  style={{ width: `${members.length ? (votedCount / members.length) * 100 : 0}%` }}
+                />
+              </div>
+            )}
+
+            {/* Actions */}
+            <div role="group" aria-label="Voting actions" className="flex flex-wrap gap-3 mb-2">
+              {revealCountdown !== null ? (
+                <button onClick={cancelRevealCountdown} className="btn btn-outline">
+                  Cancel
+                </button>
               ) : (
                 <>
                   <button
@@ -598,7 +588,7 @@ export default function Room({ code }: { code: string }) {
                     onClick={startRevealCountdown}
                     disabled={showResults || votedCount === 0}
                     aria-disabled={showResults || votedCount === 0}
-                    className="btn"
+                    className="btn btn-dark"
                   >
                     Reveal in 3s
                   </button>
@@ -609,92 +599,133 @@ export default function Room({ code }: { code: string }) {
               )}
             </div>
 
-            {/* Statistics */}
-            {showResults && members.length > 0 && (
-              <section aria-label="Voting statistics" className="card p-6 mb-4 max-w-3xl w-full mx-auto">
-                {/* Average */}
-                {numericVotes.length > 0 && (
-                  <div className="text-center">
-                    <p className="text-grey">
-                      Average:{" "}
-                      <span className="font-bold text-orange text-3xl ml-1">{average.toFixed(1)}</span>
-                    </p>
-                  </div>
-                )}
-
-                {/* Vote distribution bar chart */}
-                {(() => {
-                  // Count votes by value
-                  const voteCounts = new Map<string | number, number>();
-                  members.forEach((m) => {
-                    if (m.vote !== null) {
-                      const count = voteCounts.get(m.vote) || 0;
-                      voteCounts.set(m.vote, count + 1);
-                    }
-                  });
-
-                  // Don't show if less than 3 voters or everyone voted the same
-                  const totalVoters = Array.from(voteCounts.values()).reduce((a, b) => a + b, 0);
-                  if (voteCounts.size === 0 || totalVoters < 3 || voteCounts.size === 1)
-                    return null;
-
-                  const maxCount = Math.max(...voteCounts.values());
-                  const sortedVotes = Array.from(voteCounts.entries()).sort((a, b) => {
-                    // Sort by value (numbers first, then strings)
-                    const aNum = typeof a[0] === "number" ? a[0] : Infinity;
-                    const bNum = typeof b[0] === "number" ? b[0] : Infinity;
-                    return aNum - bNum;
-                  });
-
-                  return (
-                    <div className="space-y-2 mt-6">
-                      <h4 className="text-xs font-medium text-grey text-center mb-4">
-                        Vote Distribution
-                      </h4>
-                      <div className="flex items-end justify-center gap-3 px-4">
-                        {sortedVotes.map(([value, count]) => {
-                          const heightPx = (count / maxCount) * 120; // Max height 120px
-                          return (
-                            <div
-                              key={value}
-                              className="flex flex-col items-center gap-1.5 min-w-[48px]"
-                            >
-                              <span className="text-xs font-semibold text-grey mb-1">{count}</span>
-                              <div
-                                className={`w-12 rounded-t-[10px] transition-all duration-500 ${count === maxCount ? "bg-orange" : "bg-off-white/25"}`}
-                                style={{
-                                  height: `${Math.max(heightPx, 12)}px`,
-                                }}
-                              />
-                              <span className="text-base font-bold text-white mt-1">{value}</span>
-                            </div>
-                          );
-                        })}
+            {/* Vote breakdown */}
+            {showResults && breakdown.length > 0 && (
+              <section aria-label="Voting statistics" className="mt-8 pt-6 border-t border-line">
+                <h2 className="text-xs uppercase tracking-wide text-grey mb-4">Vote Distribution</h2>
+                <ul className="flex flex-col gap-3">
+                  {breakdown.map(({ value, voters }) => (
+                    <li key={value} className="flex items-center gap-4">
+                      <span className="w-12 h-12 shrink-0 rounded-xl bg-ink-3 flex items-center justify-center font-bold text-lg">
+                        {value}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-1">
+                          <div
+                            className={`h-2.5 rounded-full transition-all duration-500 ${voters.length === maxCount ? "bg-orange" : "bg-off-white/30"}`}
+                            style={{ width: `${Math.max((voters.length / maxCount) * 100, 6)}%` }}
+                          />
+                          <span className="text-sm font-semibold shrink-0">{voters.length}</span>
+                        </div>
+                        <p className="text-xs text-grey truncate">{voters.join(", ")}</p>
                       </div>
-                    </div>
-                  );
-                })()}
+                    </li>
+                  ))}
+                </ul>
               </section>
             )}
 
             {/* Keyboard shortcuts hint */}
-            <div className="text-center mt-6 text-xs text-grey">
-              <div className="inline-flex items-center gap-4 flex-wrap justify-center">
-                <span>
-                  <kbd className="px-2 py-1 bg-ink-3 border border-line rounded-md">1-9</kbd> Vote
-                </span>
-                <span>
-                  <kbd className="px-2 py-1 bg-ink-3 border border-line rounded-md">V</kbd> Reveal
-                </span>
-                <span>
-                  <kbd className="px-2 py-1 bg-ink-3 border border-line rounded-md">R</kbd> Reset
-                </span>
-              </div>
+            <div className="mt-10 text-xs text-grey flex items-center gap-4 flex-wrap">
+              <span>
+                <kbd className="px-2 py-1 bg-ink-3 border border-line rounded-md">1-9</kbd> Vote
+              </span>
+              <span>
+                <kbd className="px-2 py-1 bg-ink-3 border border-line rounded-md">V</kbd> Reveal
+              </span>
+              <span>
+                <kbd className="px-2 py-1 bg-ink-3 border border-line rounded-md">R</kbd> Reset
+              </span>
             </div>
-          </div>
+          </section>
         </div>
-        <Footer />
+
       </main>
+
+      {/* Your hand of cards, docked to the bottom */}
+      <section
+        id="voting"
+        aria-labelledby="voting-label"
+        className="fixed bottom-0 inset-x-0 z-30 border-t border-line bg-ink/85 backdrop-blur-md"
+      >
+        <div className="container mx-auto px-4 flex items-center gap-4">
+          <h3
+            id="voting-label"
+            className="sr-only md:not-sr-only text-xs uppercase tracking-wide text-grey shrink-0"
+          >
+            Your vote
+          </h3>
+          <ul
+            ref={votingGroupRef}
+            role="radiogroup"
+            aria-labelledby="voting-label"
+            aria-required="false"
+            aria-disabled={showResults}
+            className="flex-1 flex gap-2 overflow-x-auto md:overflow-visible md:justify-center list-none px-0 pt-5 pb-3 m-0"
+          >
+            {VOTE_VALUES.map((value, index) => {
+              const isSelected = selectedValue === value;
+              const shouldHaveTabIndex = isSelected || (selectedValue === null && index === 0);
+              const meaning = VOTE_MEANINGS[value];
+
+              return (
+                <li key={value} role="none" className="list-none relative group shrink-0">
+                  <button
+                    role="radio"
+                    aria-checked={isSelected}
+                    aria-label={meaning ? `Vote ${value} (${meaning})` : `Vote ${value}`}
+                    onClick={() => handleVote(value)}
+                    disabled={showResults}
+                    tabIndex={shouldHaveTabIndex ? 0 : -1}
+                    onKeyDown={(e) => {
+                      // Arrow navigation
+                      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+                        e.preventDefault();
+                        const nextIndex = (index + 1) % VOTE_VALUES.length;
+                        getVotingButton(nextIndex)?.focus();
+                      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+                        e.preventDefault();
+                        const prevIndex = (index - 1 + VOTE_VALUES.length) % VOTE_VALUES.length;
+                        getVotingButton(prevIndex)?.focus();
+                      } else if (e.key === " " || e.key === "Enter") {
+                        e.preventDefault();
+                        handleVote(value);
+                      } else if (e.key === "Home") {
+                        e.preventDefault();
+                        getVotingButton(0)?.focus();
+                      } else if (e.key === "End") {
+                        e.preventDefault();
+                        getVotingButton(VOTE_VALUES.length - 1)?.focus();
+                      }
+                    }}
+                    className={`
+                      w-12 h-16 sm:w-14 sm:h-20 rounded-xl font-bold text-lg sm:text-xl transition-all
+                      border-2
+                      focus:outline-none focus-visible:ring-4 focus-visible:ring-orange/50 focus-visible:ring-offset-2 focus-visible:ring-offset-ink
+                      ${
+                        isSelected
+                          ? "bg-orange text-white -translate-y-3 shadow-xl shadow-orange/30 border-orange"
+                          : "bg-ink-2 text-white hover:bg-ink-3 border-line hover:border-off-white"
+                      }
+                      ${showResults ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:-translate-y-2"}
+                    `}
+                  >
+                    {value}
+                  </button>
+                  {meaning && (
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-4 z-20 whitespace-nowrap rounded-[10px] bg-off-white text-ink text-xs font-semibold px-3 py-1.5 shadow-lg opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 group-has-[:focus-visible]:opacity-100 group-has-[:focus-visible]:translate-y-0 after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[6px] after:border-transparent after:border-t-off-white"
+                    >
+                      {meaning}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </section>
     </>
   );
 }
