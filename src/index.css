@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+/* Design tokens */
+@theme {
+  --color-ink: #161616;
+  --color-ink-2: #1f1f1f;
+  --color-ink-3: #2a2a2a;
+  --color-line: #333333;
+  --color-orange: #ff4306;
+  --color-orange-dark: #e03a04;
+  --color-off-white: #f2f2f2;
+  --color-grey: #9a9da7;
+  --font-sans: "Sora", ui-sans-serif, system-ui, sans-serif;
+  --radius-card: 24px;
+  --radius-btn: 10px;
+}
+
+html {
+  color-scheme: dark;
+  background: var(--color-ink);
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink);
+  color: #fff;
+  font-family: var(--font-sans);
+  letter-spacing: 0.08px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+::selection {
+  background: var(--color-orange);
+  color: #fff;
+}
+
+/* Buttons: solid orange, invert to white on hover */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 11px 25px;
+  border-radius: var(--radius-btn);
+  border: 2px solid var(--color-orange);
+  background: var(--color-orange);
+  color: #fff;
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: -0.18px;
+  transition:
+    background-color 0.3s,
+    color 0.3s,
+    border-color 0.3s,
+    opacity 0.3s;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) {
+  background: #fff;
+  color: var(--color-ink);
+  border-color: #fff;
+}
+.btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-orange) 60%, transparent);
+  outline-offset: 3px;
+}
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.btn-outline {
+  background: transparent;
+  border-color: #fff;
+}
+.btn-dark {
+  background: var(--color-ink-3);
+  border-color: var(--color-ink-3);
+}
+.btn-sm {
+  padding: 5px 14px;
+  font-size: 13px;
+  line-height: 20px;
+  border-width: 1.5px;
+}
+
+.card {
+  background: var(--color-ink-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+
+.field {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: var(--radius-btn);
+  background: var(--color-ink-2);
+  border: 2px solid var(--color-line);
+  color: #fff;
+  font: inherit;
+  transition: border-color 0.2s;
+}
+.field::placeholder {
+  color: var(--color-grey);
+}
+.field:focus {
+  outline: none;
+  border-color: var(--color-orange);
+}
+
+kbd {
+  font-family: inherit;
+}
+
+@keyframes bounce-once {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.animate-bounce-once {
+  animation: bounce-once 0.45s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-bounce-once {
+    animation: none;
+  }
+}
