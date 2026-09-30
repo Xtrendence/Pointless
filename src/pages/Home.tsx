@@ -83,8 +83,8 @@ export default function Home() {
               Estimate tickets together, <span className="text-orange">in real time.</span>
             </h1>
             <p className="text-lg sm:text-[21px] leading-relaxed text-off-white/80 mb-10 max-w-xl">
-              {/* First a, r, t, i and s are subtly faded */}
-              Coll<span className="opacity-80">a</span>bo<span className="opacity-80">r</span>a<span className="opacity-80">t</span><span className="opacity-80">i</span>ve e<span className="opacity-80">s</span>timation with the Fibonacci sequence.
+              {/* First a, r, t, i and s are in full white */}
+              Coll<span className="text-white">a</span>bo<span className="text-white">r</span>a<span className="text-white">t</span><span className="text-white">i</span>ve e<span className="text-white">s</span>timation with the Fibonacci sequence.
               Create a room and invite your team.
             </p>
 
