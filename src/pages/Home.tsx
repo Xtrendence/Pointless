@@ -118,9 +118,9 @@ export default function Home() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden flex flex-col">
+    <main className="relative min-h-svh overflow-hidden flex flex-col">
       <Backdrop />
-      <header className="relative z-10 container mx-auto px-4 pt-6 flex items-center justify-between">
+      <header className="relative z-10 container mx-auto px-4 pt-6 flex flex-wrap items-center justify-between gap-3">
         <Logo />
         {name && <NameEditor name={name} onSaved={setName} />}
       </header>

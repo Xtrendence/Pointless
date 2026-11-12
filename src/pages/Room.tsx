@@ -25,7 +25,8 @@ const FLY_DURATION = 380;
 function flyCard(value: Vote, from: Element, to: Element, onDone: () => void) {
   const a = from.getBoundingClientRect();
   const b = to.getBoundingClientRect();
-  const onScreen = (r: DOMRect) => r.bottom > 0 && r.top < innerHeight && r.width > 0;
+  const onScreen = (r: DOMRect) =>
+    r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth && r.width > 0;
   if (matchMedia("(prefers-reduced-motion: reduce)").matches || !onScreen(a) || !onScreen(b)) {
     onDone();
     return;
@@ -149,12 +150,12 @@ function MemberRow({
         </div>
       </div>
 
-      {/* Remove button - appears on hover */}
+      {/* Remove button - appears on hover (always shown on touch screens, which can't hover) */}
       {!isCurrentUser && (
         <button
           onClick={() => onRemove(member.id)}
           aria-label={`Remove ${member.name} from room`}
-          className="w-7 h-7 shrink-0 rounded-full text-grey hover:text-white hover:bg-orange flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange"
+          className="w-7 h-7 touch:w-10 touch:h-10 shrink-0 rounded-full text-grey hover:text-white hover:bg-orange active:text-white active:bg-orange flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 touch:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange"
           title="Remove member"
         >
           <svg
@@ -194,7 +195,7 @@ function MemberRow({
 
 function CenteredPage({ children }: { children: ComponentChildren }) {
   return (
-    <main className="relative min-h-screen overflow-hidden flex flex-col">
+    <main className="relative min-h-svh overflow-hidden flex flex-col">
       <Backdrop />
       <header className="relative z-10 container mx-auto px-4 pt-6">
         <Logo />
@@ -394,11 +395,29 @@ export default function Room({ code }: { code: string }) {
     setAnnouncement(newValue === null ? "Vote removed" : `Voted ${newValue}`);
   };
 
+  const canShare =
+    typeof navigator.share === "function" && matchMedia("(hover: none), (pointer: coarse)").matches;
+
   const handleCopyUrl = async () => {
     const url = window.location.href;
-    await navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    // Phones get the native share sheet (Messages, Slack, ...) instead of a silent copy
+    if (canShare) {
+      try {
+        await navigator.share({ title: `Pointless room ${code}`, url });
+        return;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return; // user dismissed the sheet
+        // otherwise fall through to copying
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setAnnouncement("Room URL copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setAnnouncement("Couldn't copy the room URL. Copy it from the address bar instead.");
+    }
   };
 
   const startRevealCountdown = () => {
@@ -576,7 +595,7 @@ export default function Room({ code }: { code: string }) {
         Skip to voting
       </a>
 
-      <main id="main-content" className="min-h-screen flex flex-col pb-32">
+      <main id="main-content" className="min-h-svh flex flex-col pb-32">
         {/* Live region for screen reader announcements */}
         <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
           {announcement}
@@ -610,10 +629,10 @@ export default function Room({ code }: { code: string }) {
               </div>
               <button
                 onClick={handleCopyUrl}
-                aria-label={copied ? "Room URL copied to clipboard" : "Copy room URL to clipboard"}
+                aria-label={copied ? "Room URL copied to clipboard" : canShare ? "Share room link" : "Copy room URL to clipboard"}
                 className="btn btn-sm"
               >
-                {copied ? "Copied!" : "Copy URL"}
+                {copied ? "Copied!" : canShare ? "Share" : "Copy URL"}
               </button>
             </div>
             <div className="border-t border-line pt-3">
@@ -787,8 +806,8 @@ export default function Room({ code }: { code: string }) {
               </section>
             )}
 
-            {/* Keyboard shortcuts hint */}
-            <div className="mt-10 text-xs text-grey flex items-center gap-4 flex-wrap">
+            {/* Keyboard shortcuts hint (meaningless without a physical keyboard) */}
+            <div className="mt-10 text-xs text-grey flex items-center gap-4 flex-wrap touch:hidden">
               <span>
                 <kbd className="px-2 py-1 bg-ink-3 border border-line rounded-md">1-9</kbd> Vote
               </span>
@@ -824,7 +843,15 @@ export default function Room({ code }: { code: string }) {
                         className={`w-full flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm border transition-colors cursor-pointer ${isCurrent ? "border-orange bg-orange/10" : "border-transparent hover:bg-ink-3"}`}
                       >
                         <span className="font-mono text-xs text-grey shrink-0">{ticket.id}</span>
-                        <span className="flex-1 min-w-0 truncate">{ticket.title}</span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block truncate">{ticket.title}</span>
+                          {/* Who voted what: a hover tooltip on desktop, so spell it out for touch and screen readers */}
+                          {ticket.votes.length > 0 && (
+                            <span className="sr-only touch:not-sr-only touch:block touch:text-xs touch:text-grey touch:mt-0.5">
+                              {ticket.votes.map((v) => `${v.name}: ${v.vote}`).join(", ")}
+                            </span>
+                          )}
+                        </span>
                         <span
                           className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center font-bold ${ticket.score !== null ? "bg-orange text-white" : "border border-dashed border-line text-grey"}`}
                         >
@@ -861,7 +888,7 @@ export default function Room({ code }: { code: string }) {
             aria-labelledby="voting-label"
             aria-required="false"
             aria-disabled={showResults}
-            className="flex-1 flex gap-2 overflow-x-auto md:overflow-visible md:justify-center list-none px-0 pt-5 pb-3 m-0"
+            className="flex-1 flex gap-2 overflow-x-auto overscroll-x-contain md:overflow-visible md:justify-center list-none px-0 pt-5 pb-3 m-0"
           >
             {VOTE_VALUES.map((value, index) => {
               const isSelected = selectedValue === value;

@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Touch-first devices (phones, tablets): no hover, imprecise pointer */
+@custom-variant touch {
+  @media (hover: none), (pointer: coarse) {
+    @slot;
+  }
+}
+
 /* Design tokens */
 @theme {
   --color-ink: #161616;
@@ -61,7 +68,15 @@ body {
     opacity 0.3s;
   cursor: pointer;
 }
-.btn:hover:not(:disabled) {
+/* Gated so a tap doesn't leave the button stuck in its hover colours on touch screens */
+@media (hover: hover) {
+  .btn:hover:not(:disabled) {
+    background: #fff;
+    color: var(--color-ink);
+    border-color: #fff;
+  }
+}
+.btn:active:not(:disabled) {
   background: #fff;
   color: var(--color-ink);
   border-color: #fff;
@@ -115,6 +130,26 @@ body {
 
 kbd {
   font-family: inherit;
+}
+
+/* No double-tap-to-zoom delay when tapping cards and buttons in quick succession */
+a,
+button,
+summary,
+select,
+label {
+  touch-action: manipulation;
+}
+
+@media (hover: none), (pointer: coarse) {
+  /* iOS zooms into any field with text smaller than 16px when it's focused */
+  .field {
+    font-size: max(16px, 1em);
+  }
+  /* Small buttons are ~33px tall; bring them close to the 44px touch target guideline */
+  .btn-sm {
+    padding: 9px 16px;
+  }
 }
 
 @keyframes bounce-once {
