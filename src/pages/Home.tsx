@@ -6,6 +6,7 @@ import { NameEditor } from "../components/NameEditor";
 import { Footer, Logo, Backdrop } from "../components/Layout";
 import { ShufflingHand } from "../components/ShufflingHand";
 import { GlowBorder } from "../components/GlowBorder";
+import { fetchLinearTeams, fetchLinearTickets, LINEAR_API_KEY, LINEAR_ENABLED, type LinearTeam } from "../lib/linear";
 
 function timeAgo(ts: number) {
   const minutes = Math.round((Date.now() - ts) / 60000);
@@ -17,10 +18,15 @@ function timeAgo(ts: number) {
 export default function Home() {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [truncatedRoom, setTruncatedRoom] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
   const [recent, setRecent] = useState<RecentRoom[]>([]);
   const [name, setName] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState("");
+  const [linearTeam, setLinearTeam] = useState("WEB");
+  const [linearState, setLinearState] = useState("Ready for Refinement");
+  const [linearTeams, setLinearTeams] = useState<LinearTeam[]>([]);
+  const linearStates = linearTeams.find((t) => t.key === linearTeam)?.states ?? [linearState];
   const needsName = name === "";
   const hasName = !!name || !!nameDraft.trim();
 
@@ -28,6 +34,30 @@ export default function Home() {
     document.title = "Pointless - Ticket Estimation";
     listRecentRooms().then(setRecent);
     getSavedName().then(setName);
+  }, []);
+
+  // Selects a team, keeping the chosen status when that team has it too
+  const pickLinearTeam = (teams: LinearTeam[], key: string) => {
+    const team = teams.find((t) => t.key === key) ?? teams[0];
+    if (!team) return;
+    setLinearTeam(team.key);
+    setLinearState((state) => (team.states.includes(state) ? state : (team.states[0] ?? state)));
+  };
+
+  // Load the team and status choices
+  useEffect(() => {
+    if (!LINEAR_ENABLED) return;
+    let stale = false;
+    fetchLinearTeams(LINEAR_API_KEY)
+      .then((teams) => {
+        if (stale) return;
+        setLinearTeams(teams);
+        pickLinearTeam(teams, linearTeam);
+      })
+      .catch(() => !stale && setLinearTeams([])); // a bad key surfaces on import
+    return () => {
+      stale = true;
+    };
   }, []);
 
   // A name is required before creating or joining; the first one typed here is remembered
@@ -56,6 +86,26 @@ export default function Home() {
     }
   };
 
+  const handleLinearImport = async (e: Event) => {
+    e.preventDefault();
+    if (!(await ensureName())) return;
+    setIsCreating(true);
+    setError(null);
+    setTruncatedRoom(null);
+    try {
+      const { tickets, truncated } = await fetchLinearTickets(LINEAR_API_KEY, linearTeam.trim().toUpperCase(), linearState.trim());
+      if (!tickets.length) throw new Error(`No ${linearTeam} tickets in "${linearState}"`);
+      const code = await createRoom(tickets);
+      if (!truncated) return navigate(`/room/${code}`);
+      // Stay here so the notice is seen; the user opens the room from the link
+      setTruncatedRoom(code);
+      setIsCreating(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to import from Linear");
+      setIsCreating(false);
+    }
+  };
+
   const handleJoin = async (e: Event) => {
     e.preventDefault();
     const code = joinCode.trim().toUpperCase();
@@ -68,9 +118,9 @@ export default function Home() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden flex flex-col">
+    <main className="relative min-h-svh overflow-hidden flex flex-col">
       <Backdrop />
-      <header className="relative z-10 container mx-auto px-4 pt-6 flex items-center justify-between">
+      <header className="relative z-10 container mx-auto px-4 pt-6 flex flex-wrap items-center justify-between gap-3">
         <Logo />
         {name && <NameEditor name={name} onSaved={setName} />}
       </header>
@@ -134,6 +184,52 @@ export default function Home() {
               </span>
             </button>
 
+            {LINEAR_ENABLED && (
+            <details className="mt-3 text-sm">
+              <summary className="cursor-pointer text-grey hover:text-white transition-colors">
+                Or import tickets from Linear
+              </summary>
+              <form onSubmit={handleLinearImport} className="mt-3 flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <label className="w-32 shrink-0">
+                    <span className="block text-xs text-grey mb-1">Team</span>
+                    <select
+                      value={linearTeam}
+                      onChange={(e) => pickLinearTeam(linearTeams, (e.target as HTMLSelectElement).value)}
+                      className="field"
+                      required
+                    >
+                      {linearTeams.length === 0 && <option value={linearTeam}>{linearTeam}</option>}
+                      {linearTeams.map((t) => (
+                        <option key={t.key} value={t.key}>
+                          {t.key} · {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex-1 min-w-0">
+                    <span className="block text-xs text-grey mb-1">Status</span>
+                    <select
+                      value={linearState}
+                      onChange={(e) => setLinearState((e.target as HTMLSelectElement).value)}
+                      className="field"
+                      required
+                    >
+                      {linearStates.map((state) => (
+                        <option key={state} value={state}>
+                          {state}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <button type="submit" className="btn btn-outline w-full" disabled={isCreating || !hasName}>
+                  {isCreating ? "Importing..." : "Create room with these tickets"}
+                </button>
+              </form>
+            </details>
+            )}
+
             <div className="flex items-center gap-3 my-5 text-xs uppercase tracking-wide text-grey">
               <span className="flex-1 h-px bg-line" />
               or join one
@@ -163,6 +259,15 @@ export default function Home() {
             {error && (
               <p role="alert" className="mt-4 text-sm text-orange">
                 {error}
+              </p>
+            )}
+
+            {truncatedRoom && (
+              <p role="alert" className="mt-4 text-sm text-orange">
+                Only the first 100 tickets were imported.{" "}
+                <Link to={`/room/${truncatedRoom}`} className="underline text-white">
+                  Open room
+                </Link>
               </p>
             )}
 

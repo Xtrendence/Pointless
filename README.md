@@ -15,6 +15,7 @@ Real-time ticket estimation for agile teams, using the Fibonacci sequence. It wo
 - **Rooms persist:** a room and its members survive everyone closing their tabs. Open the same link later and you're back as the same member. If you've lost your local data, enter the same name and choose "Rejoin".
 - Rooms expire after **24 hours** of inactivity.
 - "Clear local data" in the footer wipes everything this browser has stored.
+- **Linear import (optional):** only shown when `LINEAR_API_KEY` is set (see [Linear integration](#linear-integration)). Pick a team and a status to create a room with those tickets, step through them, and save a score per ticket. Saved scores are written back to Linear as the issue's estimate.
 
 ## How it works without a server
 
@@ -38,3 +39,15 @@ npm run build    # outputs dist/, including 404.html for client-side routing
 To test with more than one person locally, open the room in a normal window and a private window.
 
 Every push to `main` deploys to GitHub Pages via `.github/workflows/deploy.yml`.
+
+## Linear integration
+
+The "Import tickets from Linear" option **only renders if `LINEAR_API_KEY` is set** when the app is built or served. Without it, Pointless works exactly as before.
+
+- **Locally:** copy `.env.example` to `.env` and fill in a [Linear personal API key](https://linear.app/settings/account/security). `npm run dev` and `npm run build` both read it.
+- **GitHub Pages:** add a repository secret named `LINEAR_API_KEY` (Settings → Secrets and variables → Actions). The deploy workflow passes it to the build. Delete the secret and redeploy to turn the integration off again.
+
+> [!WARNING]
+> The key is compiled into the JavaScript bundle. On a public GitHub Pages site, **anyone who loads the page can read it** and use it with your Linear permissions. Only set it for a deploy you're comfortable sharing that access with, ideally using a key from an account limited to the teams you estimate.
+
+Tickets are fetched from Linear in the browser. Only each ticket's identifier, title and URL are shared with the room, encrypted like the rest of the room data.

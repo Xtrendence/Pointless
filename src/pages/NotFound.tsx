@@ -8,7 +8,7 @@ export default function NotFound() {
   }, []);
 
   return (
-    <main className="relative min-h-screen overflow-hidden flex flex-col">
+    <main className="relative min-h-svh overflow-hidden flex flex-col">
       <Backdrop />
       <header className="relative z-10 container mx-auto px-4 pt-6">
         <Logo />

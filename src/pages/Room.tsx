@@ -25,7 +25,8 @@ const FLY_DURATION = 380;
 function flyCard(value: Vote, from: Element, to: Element, onDone: () => void) {
   const a = from.getBoundingClientRect();
   const b = to.getBoundingClientRect();
-  const onScreen = (r: DOMRect) => r.bottom > 0 && r.top < innerHeight && r.width > 0;
+  const onScreen = (r: DOMRect) =>
+    r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth && r.width > 0;
   if (matchMedia("(prefers-reduced-motion: reduce)").matches || !onScreen(a) || !onScreen(b)) {
     onDone();
     return;
@@ -149,12 +150,12 @@ function MemberRow({
         </div>
       </div>
 
-      {/* Remove button - appears on hover */}
+      {/* Remove button - appears on hover (always shown on touch screens, which can't hover) */}
       {!isCurrentUser && (
         <button
           onClick={() => onRemove(member.id)}
           aria-label={`Remove ${member.name} from room`}
-          className="w-7 h-7 shrink-0 rounded-full text-grey hover:text-white hover:bg-orange flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange"
+          className="w-7 h-7 touch:w-10 touch:h-10 shrink-0 rounded-full text-grey hover:text-white hover:bg-orange active:text-white active:bg-orange flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 touch:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange"
           title="Remove member"
         >
           <svg
@@ -194,7 +195,7 @@ function MemberRow({
 
 function CenteredPage({ children }: { children: ComponentChildren }) {
   return (
-    <main className="relative min-h-screen overflow-hidden flex flex-col">
+    <main className="relative min-h-svh overflow-hidden flex flex-col">
       <Backdrop />
       <header className="relative z-10 container mx-auto px-4 pt-6">
         <Logo />
@@ -210,7 +211,7 @@ function CenteredPage({ children }: { children: ComponentChildren }) {
 type JoinProblem = { message: string; takenBy?: Member } | null;
 
 export default function Room({ code }: { code: string }) {
-  const { view, join, rename, vote, reveal, reset, removeMember } = useRoom(code);
+  const { view, linearError, join, rename, vote, reveal, reset, removeMember, saveScore, selectTicket } = useRoom(code);
   const { fireConfetti } = useConfetti();
 
   const [name, setName] = useState("");
@@ -394,11 +395,29 @@ export default function Room({ code }: { code: string }) {
     setAnnouncement(newValue === null ? "Vote removed" : `Voted ${newValue}`);
   };
 
+  const canShare =
+    typeof navigator.share === "function" && matchMedia("(hover: none), (pointer: coarse)").matches;
+
   const handleCopyUrl = async () => {
     const url = window.location.href;
-    await navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    // Phones get the native share sheet (Messages, Slack, ...) instead of a silent copy
+    if (canShare) {
+      try {
+        await navigator.share({ title: `Pointless room ${code}`, url });
+        return;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return; // user dismissed the sheet
+        // otherwise fall through to copying
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setAnnouncement("Room URL copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setAnnouncement("Couldn't copy the room URL. Copy it from the address bar instead.");
+    }
   };
 
   const startRevealCountdown = () => {
@@ -417,7 +436,14 @@ export default function Room({ code }: { code: string }) {
 
   // Keyboard shortcuts - must be called before any early returns
   useKeyboardShortcuts({
-    onVote: (value) => currentMember && handleVote(value),
+    onVote: (value) => {
+      if (!currentMember) return;
+      handleVote(value);
+      // Keep focus on the selected card, or it stays on the last clicked one
+      if (votingGroupRef.current?.contains(document.activeElement)) {
+        getVotingButton(VOTE_VALUES.indexOf(value as never))?.focus();
+      }
+    },
     onReveal: () => currentMember && reveal(),
     onReset: () => currentMember && reset(),
     canReveal: votedCount > 0,
@@ -529,6 +555,7 @@ export default function Room({ code }: { code: string }) {
 
   // Main room view
   const showResults = view.showResults;
+  const { tickets, currentTicket } = view;
 
   // Calculate statistics
   const numericVotes = members
@@ -568,7 +595,7 @@ export default function Room({ code }: { code: string }) {
         Skip to voting
       </a>
 
-      <main id="main-content" className="min-h-screen flex flex-col pb-32">
+      <main id="main-content" className="min-h-svh flex flex-col pb-32">
         {/* Live region for screen reader announcements */}
         <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
           {announcement}
@@ -586,6 +613,11 @@ export default function Room({ code }: { code: string }) {
             Reconnecting...
           </p>
         )}
+        {linearError && (
+          <p role="alert" className="text-xs text-orange text-center mt-3">
+            {linearError}
+          </p>
+        )}
 
         <div className="container mx-auto px-4 py-6 flex-1 grid gap-6 lg:grid-cols-[340px_1fr] items-start">
           {/* Team roster */}
@@ -597,10 +629,10 @@ export default function Room({ code }: { code: string }) {
               </div>
               <button
                 onClick={handleCopyUrl}
-                aria-label={copied ? "Room URL copied to clipboard" : "Copy room URL to clipboard"}
+                aria-label={copied ? "Room URL copied to clipboard" : canShare ? "Share room link" : "Copy room URL to clipboard"}
                 className="btn btn-sm"
               >
-                {copied ? "Copied!" : "Copy URL"}
+                {copied ? "Copied!" : canShare ? "Share" : "Copy URL"}
               </button>
             </div>
             <div className="border-t border-line pt-3">
@@ -633,12 +665,26 @@ export default function Room({ code }: { code: string }) {
             </div>
           </aside>
 
+          <div className="flex flex-col gap-6 min-w-0">
           {/* Round status, actions and results */}
           <section aria-label="Current round" className="card relative overflow-hidden p-6 sm:p-10">
             <div
               aria-hidden="true"
               className="pointer-events-none absolute -right-24 -top-24 w-72 h-72 rounded-full border-2 border-orange/20"
             />
+            {currentTicket && (
+              <p className="relative mb-4 text-lg">
+                <a
+                  href={currentTicket.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono font-bold text-orange hover:underline mr-2"
+                >
+                  {currentTicket.id}
+                </a>
+                {currentTicket.title}
+              </p>
+            )}
             <p className="text-orange font-semibold tracking-wide uppercase text-xs mb-3">
               {showResults ? "Results" : revealCountdown !== null ? "Revealing" : "Round in progress"}
             </p>
@@ -667,7 +713,7 @@ export default function Room({ code }: { code: string }) {
             </h1>
             <p className="text-grey mb-6 max-w-lg">
               {showResults
-                ? `${castVotes.length} of ${members.length} voted. Reset to start the next ticket.`
+                ? `${castVotes.length} of ${members.length} voted. ${currentTicket ? "Save a score to move to the next ticket." : "Reset to start the next ticket."}`
                 : "Pick a card below. Votes stay hidden until someone reveals them."}
             </p>
 
@@ -710,9 +756,29 @@ export default function Room({ code }: { code: string }) {
                   <button onClick={reset} className="btn btn-outline">
                     Reset
                   </button>
+                  {currentTicket && (
+                    <button onClick={() => saveScore(null)} className="btn btn-outline">
+                      Skip
+                    </button>
+                  )}
                 </>
               )}
             </div>
+
+            {showResults && currentTicket && breakdown.length > 0 && (
+              <div role="group" aria-label="Save score" className="flex flex-wrap items-center gap-2 mt-4">
+                <span className="text-sm text-grey mr-1">Save as</span>
+                {breakdown.map(({ value, voters }) => (
+                  <button
+                    key={value}
+                    onClick={() => saveScore(value)}
+                    className={`btn btn-sm ${voters.length === maxCount ? "" : "btn-outline"}`}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Vote breakdown */}
             {showResults && breakdown.length > 0 && (
@@ -740,8 +806,8 @@ export default function Room({ code }: { code: string }) {
               </section>
             )}
 
-            {/* Keyboard shortcuts hint */}
-            <div className="mt-10 text-xs text-grey flex items-center gap-4 flex-wrap">
+            {/* Keyboard shortcuts hint (meaningless without a physical keyboard) */}
+            <div className="mt-10 text-xs text-grey flex items-center gap-4 flex-wrap touch:hidden">
               <span>
                 <kbd className="px-2 py-1 bg-ink-3 border border-line rounded-md">1-9</kbd> Vote
               </span>
@@ -753,6 +819,52 @@ export default function Room({ code }: { code: string }) {
               </span>
             </div>
           </section>
+
+          {tickets.length > 0 && (
+            <section aria-labelledby="tickets-heading" className="card p-4">
+              <h2
+                id="tickets-heading"
+                className="px-2 pt-1 pb-3 text-xs uppercase tracking-wide text-grey flex justify-between"
+              >
+                <span>Tickets</span>
+                <span>
+                  {tickets.filter((t) => t.score !== null).length} of {tickets.length} scored
+                </span>
+              </h2>
+              <ul className="flex flex-col gap-1">
+                {tickets.map((ticket) => {
+                  const isCurrent = ticket.id === currentTicket?.id;
+                  return (
+                    <li key={ticket.id}>
+                      <button
+                        onClick={() => selectTicket(ticket.id)}
+                        aria-current={isCurrent}
+                        title={ticket.votes.map((v) => `${v.name}: ${v.vote}`).join(", ") || undefined}
+                        className={`w-full flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm border transition-colors cursor-pointer ${isCurrent ? "border-orange bg-orange/10" : "border-transparent hover:bg-ink-3"}`}
+                      >
+                        <span className="font-mono text-xs text-grey shrink-0">{ticket.id}</span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block truncate">{ticket.title}</span>
+                          {/* Who voted what: a hover tooltip on desktop, so spell it out for touch and screen readers */}
+                          {ticket.votes.length > 0 && (
+                            <span className="sr-only touch:not-sr-only touch:block touch:text-xs touch:text-grey touch:mt-0.5">
+                              {ticket.votes.map((v) => `${v.name}: ${v.vote}`).join(", ")}
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center font-bold ${ticket.score !== null ? "bg-orange text-white" : "border border-dashed border-line text-grey"}`}
+                        >
+                          {ticket.score ?? "–"}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+          </div>
         </div>
 
       </main>
@@ -776,7 +888,7 @@ export default function Room({ code }: { code: string }) {
             aria-labelledby="voting-label"
             aria-required="false"
             aria-disabled={showResults}
-            className="flex-1 flex gap-2 overflow-x-auto md:overflow-visible md:justify-center list-none px-0 pt-5 pb-3 m-0"
+            className="flex-1 flex gap-2 overflow-x-auto overscroll-x-contain md:overflow-visible md:justify-center list-none px-0 pt-5 pb-3 m-0"
           >
             {VOTE_VALUES.map((value, index) => {
               const isSelected = selectedValue === value;

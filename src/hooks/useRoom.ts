@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import { RoomSync, type RoomView, type Vote } from "../lib/room";
+import { updateLinearEstimate } from "../lib/linear";
+import { changedScores, RoomSync, type RoomView, type Vote } from "../lib/room";
 import { setSavedName } from "../lib/profile";
 
 export function useRoom(code: string) {
   const [view, setView] = useState<RoomView | null>(null);
+  const [linearError, setLinearError] = useState<string | null>(null);
   const roomRef = useRef<RoomSync | null>(null);
 
   useEffect(() => {
@@ -12,7 +14,24 @@ export function useRoom(code: string) {
     RoomSync.open(code).then((room) => {
       if (cancelled) return room.close();
       roomRef.current = room;
-      unsubscribe = room.subscribe(setView);
+      // Every open tab pushes saved scores to Linear when the build has a key (a no-op
+      // otherwise), no matter who clicked save. Duplicate updates are harmless: same value.
+      // shortcut: a score saved while no key holder has the room open never reaches Linear, add a "pushed" flag on the ticket record if that matters
+      let scores: Map<string, Vote | null> | null = null; // null until synced, so history isn't re-sent
+      unsubscribe = room.subscribe((view) => {
+        setView(view);
+        if (!view.synced) return;
+        for (const [id, score] of scores ? changedScores(scores, view.tickets) : []) {
+          updateLinearEstimate(id, score).then(
+            () => setLinearError(null),
+            (err) => {
+              console.error(`Failed to update ${id} in Linear`, err);
+              setLinearError(`Linear was not updated for ${id}: ${err instanceof Error ? err.message : err}`);
+            },
+          );
+        }
+        scores = new Map(view.tickets.map((t) => [t.id, t.score]));
+      });
       room.connect();
     });
 
@@ -52,6 +71,8 @@ export function useRoom(code: string) {
   const reveal = useCallback(() => roomRef.current?.reveal(), []);
   const reset = useCallback(() => roomRef.current?.reset(), []);
   const removeMember = useCallback((id: string) => roomRef.current?.removeMember(id), []);
+  const saveScore = useCallback((score: Vote | null) => roomRef.current?.saveScore(score), []);
+  const selectTicket = useCallback((id: string) => roomRef.current?.selectTicket(id), []);
 
-  return { view, join, rename, vote, reveal, reset, removeMember };
+  return { view, linearError, join, rename, vote, reveal, reset, removeMember, saveScore, selectTicket };
 }
