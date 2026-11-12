@@ -25,6 +25,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+        env:
+          # Optional repository secret. When set, the Linear import is enabled on
+          # the site and the key is readable by anyone who loads it.
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

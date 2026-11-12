@@ -210,7 +210,7 @@ function CenteredPage({ children }: { children: ComponentChildren }) {
 type JoinProblem = { message: string; takenBy?: Member } | null;
 
 export default function Room({ code }: { code: string }) {
-  const { view, join, rename, vote, reveal, reset, removeMember } = useRoom(code);
+  const { view, linearError, join, rename, vote, reveal, reset, removeMember, saveScore, selectTicket } = useRoom(code);
   const { fireConfetti } = useConfetti();
 
   const [name, setName] = useState("");
@@ -417,7 +417,14 @@ export default function Room({ code }: { code: string }) {
 
   // Keyboard shortcuts - must be called before any early returns
   useKeyboardShortcuts({
-    onVote: (value) => currentMember && handleVote(value),
+    onVote: (value) => {
+      if (!currentMember) return;
+      handleVote(value);
+      // Keep focus on the selected card, or it stays on the last clicked one
+      if (votingGroupRef.current?.contains(document.activeElement)) {
+        getVotingButton(VOTE_VALUES.indexOf(value as never))?.focus();
+      }
+    },
     onReveal: () => currentMember && reveal(),
     onReset: () => currentMember && reset(),
     canReveal: votedCount > 0,
@@ -529,6 +536,7 @@ export default function Room({ code }: { code: string }) {
 
   // Main room view
   const showResults = view.showResults;
+  const { tickets, currentTicket } = view;
 
   // Calculate statistics
   const numericVotes = members
@@ -586,6 +594,11 @@ export default function Room({ code }: { code: string }) {
             Reconnecting...
           </p>
         )}
+        {linearError && (
+          <p role="alert" className="text-xs text-orange text-center mt-3">
+            {linearError}
+          </p>
+        )}
 
         <div className="container mx-auto px-4 py-6 flex-1 grid gap-6 lg:grid-cols-[340px_1fr] items-start">
           {/* Team roster */}
@@ -633,12 +646,26 @@ export default function Room({ code }: { code: string }) {
             </div>
           </aside>
 
+          <div className="flex flex-col gap-6 min-w-0">
           {/* Round status, actions and results */}
           <section aria-label="Current round" className="card relative overflow-hidden p-6 sm:p-10">
             <div
               aria-hidden="true"
               className="pointer-events-none absolute -right-24 -top-24 w-72 h-72 rounded-full border-2 border-orange/20"
             />
+            {currentTicket && (
+              <p className="relative mb-4 text-lg">
+                <a
+                  href={currentTicket.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono font-bold text-orange hover:underline mr-2"
+                >
+                  {currentTicket.id}
+                </a>
+                {currentTicket.title}
+              </p>
+            )}
             <p className="text-orange font-semibold tracking-wide uppercase text-xs mb-3">
               {showResults ? "Results" : revealCountdown !== null ? "Revealing" : "Round in progress"}
             </p>
@@ -667,7 +694,7 @@ export default function Room({ code }: { code: string }) {
             </h1>
             <p className="text-grey mb-6 max-w-lg">
               {showResults
-                ? `${castVotes.length} of ${members.length} voted. Reset to start the next ticket.`
+                ? `${castVotes.length} of ${members.length} voted. ${currentTicket ? "Save a score to move to the next ticket." : "Reset to start the next ticket."}`
                 : "Pick a card below. Votes stay hidden until someone reveals them."}
             </p>
 
@@ -710,9 +737,29 @@ export default function Room({ code }: { code: string }) {
                   <button onClick={reset} className="btn btn-outline">
                     Reset
                   </button>
+                  {currentTicket && (
+                    <button onClick={() => saveScore(null)} className="btn btn-outline">
+                      Skip
+                    </button>
+                  )}
                 </>
               )}
             </div>
+
+            {showResults && currentTicket && breakdown.length > 0 && (
+              <div role="group" aria-label="Save score" className="flex flex-wrap items-center gap-2 mt-4">
+                <span className="text-sm text-grey mr-1">Save as</span>
+                {breakdown.map(({ value, voters }) => (
+                  <button
+                    key={value}
+                    onClick={() => saveScore(value)}
+                    className={`btn btn-sm ${voters.length === maxCount ? "" : "btn-outline"}`}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Vote breakdown */}
             {showResults && breakdown.length > 0 && (
@@ -753,6 +800,44 @@ export default function Room({ code }: { code: string }) {
               </span>
             </div>
           </section>
+
+          {tickets.length > 0 && (
+            <section aria-labelledby="tickets-heading" className="card p-4">
+              <h2
+                id="tickets-heading"
+                className="px-2 pt-1 pb-3 text-xs uppercase tracking-wide text-grey flex justify-between"
+              >
+                <span>Tickets</span>
+                <span>
+                  {tickets.filter((t) => t.score !== null).length} of {tickets.length} scored
+                </span>
+              </h2>
+              <ul className="flex flex-col gap-1">
+                {tickets.map((ticket) => {
+                  const isCurrent = ticket.id === currentTicket?.id;
+                  return (
+                    <li key={ticket.id}>
+                      <button
+                        onClick={() => selectTicket(ticket.id)}
+                        aria-current={isCurrent}
+                        title={ticket.votes.map((v) => `${v.name}: ${v.vote}`).join(", ") || undefined}
+                        className={`w-full flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm border transition-colors cursor-pointer ${isCurrent ? "border-orange bg-orange/10" : "border-transparent hover:bg-ink-3"}`}
+                      >
+                        <span className="font-mono text-xs text-grey shrink-0">{ticket.id}</span>
+                        <span className="flex-1 min-w-0 truncate">{ticket.title}</span>
+                        <span
+                          className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center font-bold ${ticket.score !== null ? "bg-orange text-white" : "border border-dashed border-line text-grey"}`}
+                        >
+                          {ticket.score ?? "–"}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+          </div>
         </div>
 
       </main>

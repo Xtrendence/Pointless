@@ -18,6 +18,8 @@ export type Vote = number | string;
 
 export const ROOM_TTL = 24 * 60 * 60 * 1000;
 export const NAME_MAX_LENGTH = 30;
+const TITLE_MAX_LENGTH = 300;
+const TICKET_ID = /^[A-Z0-9]+-\d+$/;
 
 const RELAYS = [
   "wss://nos.lol",
@@ -45,6 +47,14 @@ interface MemberValue {
 interface RoundValue {
   id: string;
   showResults: boolean;
+  ticket?: string | null;
+}
+interface TicketValue {
+  title: string;
+  url: string;
+  order: number;
+  score: Vote | null;
+  votes: { name: string; vote: Vote }[];
 }
 interface MetaValue {
   createdAt: number;
@@ -70,6 +80,10 @@ export interface Member {
   online: boolean;
 }
 
+export interface Ticket extends Omit<TicketValue, "order"> {
+  id: string;
+}
+
 export interface RoomView {
   code: string;
   exists: boolean;
@@ -78,6 +92,8 @@ export interface RoomView {
   connected: boolean;
   members: Member[];
   showResults: boolean;
+  tickets: Ticket[];
+  currentTicket: Ticket | null;
   me: { id: string; name: string } | null;
   removedSelf: boolean;
   lastActivity: number;
@@ -106,6 +122,16 @@ export function isValidRoomCode(code: string): boolean {
   return /^[A-Z0-9]{6}$/.test(code);
 }
 
+/** Numeric scores that differ from `previous`: the ones to push to Linear. */
+export function changedScores(
+  previous: Map<string, Vote | null>,
+  tickets: { id: string; score: Vote | null }[],
+): [id: string, score: number][] {
+  return tickets.flatMap(({ id, score }): [string, number][] =>
+    typeof score === "number" && previous.get(id) !== score ? [[id, score]] : [],
+  );
+}
+
 function isVote(value: unknown): value is Vote {
   return (VOTE_VALUES as readonly unknown[]).includes(value);
 }
@@ -117,7 +143,26 @@ function isValidRecord(rec: unknown): rec is Rec {
   if (r.ts > Date.now() + ROOM_TTL || !r.v || typeof r.v !== "object") return false;
   const v = r.v;
   if (r.k === "meta") return typeof v.createdAt === "number";
-  if (r.k === "round") return typeof v.id === "string" && typeof v.showResults === "boolean";
+  if (r.k === "round") {
+    return (
+      typeof v.id === "string" &&
+      typeof v.showResults === "boolean" &&
+      (v.ticket == null || typeof v.ticket === "string")
+    );
+  }
+  if (r.k.startsWith("t:")) {
+    return (
+      TICKET_ID.test(r.k.slice(2)) &&
+      typeof v.title === "string" &&
+      v.title.length <= TITLE_MAX_LENGTH &&
+      typeof v.url === "string" &&
+      v.url.startsWith("https://linear.app/") &&
+      typeof v.order === "number" &&
+      (v.score === null || isVote(v.score)) &&
+      Array.isArray(v.votes) &&
+      v.votes.every((x) => typeof x?.name === "string" && isVote(x.vote))
+    );
+  }
   if (r.k.startsWith("m:")) {
     return (
       typeof v.name === "string" &&
@@ -281,6 +326,12 @@ export class RoomSync {
     }
     members.sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id));
 
+    const tickets: (Ticket & { order: number })[] = [];
+    for (const rec of this.records.values()) {
+      if (rec.k.startsWith("t:")) tickets.push({ id: rec.k.slice(2), ...(rec.v as TicketValue) });
+    }
+    tickets.sort((a, b) => a.order - b.order);
+
     const own = this.memberId ? this.memberRecord(this.memberId) : undefined;
     const lastActivity = lastActivityOf(this.records.values());
     return {
@@ -291,6 +342,8 @@ export class RoomSync {
       connected: this.connected,
       members: members.map(({ joinedAt: _, ...m }) => m),
       showResults: round.showResults,
+      tickets: tickets.map(({ order: _, ...t }) => t),
+      currentTicket: tickets.find((t) => t.id === round.ticket) ?? null,
       me: own && !own.removed && this.memberId ? { id: this.memberId, name: own.name } : null,
       removedSelf: !!own?.removed,
       lastActivity,
@@ -344,11 +397,46 @@ export class RoomSync {
   }
 
   reveal() {
-    this.write("round", { id: this.round().id, showResults: true } satisfies RoundValue);
+    this.write("round", { ...this.round(), showResults: true } satisfies RoundValue);
   }
 
   reset() {
-    this.write("round", { id: randomId(), showResults: false } satisfies RoundValue);
+    this.selectTicket(this.round().ticket ?? null);
+  }
+
+  /** Starts a fresh round on the given ticket (or on no ticket). */
+  selectTicket(ticket: string | null) {
+    this.write("round", { id: randomId(), showResults: false, ticket } satisfies RoundValue);
+  }
+
+  addTickets(tickets: { id: string; title: string; url: string }[]) {
+    tickets.forEach((t, order) =>
+      this.write(`t:${t.id}`, {
+        title: t.title.slice(0, TITLE_MAX_LENGTH),
+        url: t.url,
+        order,
+        score: null,
+        votes: [],
+      } satisfies TicketValue),
+    );
+    if (tickets.length) this.selectTicket(tickets[0].id);
+  }
+
+  /**
+   * Saves the score (and who voted what) on the current ticket, then moves to
+   * the next unscored one. A null score skips the ticket without saving.
+   */
+  saveScore(score: Vote | null) {
+    const { tickets, currentTicket, members } = this.view();
+    if (!currentTicket) return;
+    if (score !== null) {
+      const votes = members.flatMap((m) => (m.vote === null ? [] : [{ name: m.name, vote: m.vote }]));
+      const existing = this.records.get(`t:${currentTicket.id}`)!.v as TicketValue;
+      this.write(`t:${currentTicket.id}`, { ...existing, score, votes } satisfies TicketValue);
+    }
+    const index = tickets.findIndex((t) => t.id === currentTicket.id);
+    const next = [...tickets.slice(index + 1), ...tickets.slice(0, index)].find((t) => t.score === null);
+    this.selectTicket(next?.id ?? null);
   }
 
   private updateMember(id: string | null, patch: Partial<MemberValue>) {
@@ -490,9 +578,10 @@ export class RoomSync {
 }
 
 /** Creates a room locally and announces it to the relays. */
-export async function createRoom(): Promise<string> {
+export async function createRoom(tickets: { id: string; title: string; url: string }[] = []): Promise<string> {
   const code = generateRoomCode();
   const room = await RoomSync.open(code, { create: true });
+  room.addTickets(tickets);
   room.close();
   return code;
 }
